@@ -29,15 +29,48 @@ interface Request {
   created_at: string;
 }
 
+interface Product {
+  id: number;
+  sku: string;
+  name: string;
+  category: string;
+  unit: string;
+  price: number;
+  supplier_id: number | null;
+  status: string;
+  created_at: string;
+}
+
+interface Order {
+  id: number;
+  client_id: number;
+  status: string;
+  total_amount: number;
+  items: OrderItem[];
+  created_at: string;
+}
+
+interface OrderItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  price: number;
+}
+
 const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [requests, setRequests] = useState<Request[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([
+    { id: 1, sku: 'SKU001', name: 'Ноутбук Dell XPS', category: 'Электроника', unit: 'шт', price: 85000, supplier_id: 3, status: 'approved', created_at: new Date().toISOString() },
+    { id: 2, sku: 'SKU002', name: 'Холодильник LG', category: 'Бытовая техника', unit: 'шт', price: 45000, supplier_id: 3, status: 'approved', created_at: new Date().toISOString() },
+    { id: 3, sku: 'SKU003', name: 'Кофе Lavazza', category: 'Продукты питания', unit: 'кг', price: 1200, supplier_id: 3, status: 'approved', created_at: new Date().toISOString() }
+  ]);
   const [contractors, setContractors] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [zones, setZones] = useState<any[]>([]);
+  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
 
   useEffect(() => {
     if (isLoggedIn && currentUser) {
@@ -47,6 +80,73 @@ const Index = () => {
 
   const loadData = async () => {
     
+  };
+
+  const addProductToCart = (product: Product) => {
+    const existingItem = cart.find(item => item.product.id === product.id);
+    if (existingItem) {
+      setCart(cart.map(item => 
+        item.product.id === product.id 
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      setCart([...cart, { product, quantity: 1 }]);
+    }
+    toast({ title: 'Товар добавлен', description: `${product.name} добавлен в корзину` });
+  };
+
+  const createOrder = () => {
+    if (cart.length === 0) {
+      toast({ title: 'Ошибка', description: 'Корзина пуста', variant: 'destructive' });
+      return;
+    }
+    const newOrder: Order = {
+      id: orders.length + 1,
+      client_id: currentUser?.id || 0,
+      status: 'new',
+      total_amount: cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0),
+      items: cart.map(item => ({
+        product_id: item.product.id,
+        product_name: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price
+      })),
+      created_at: new Date().toISOString()
+    };
+    setOrders([...orders, newOrder]);
+    setCart([]);
+    toast({ title: 'Заказ создан', description: `Заказ #${newOrder.id} успешно оформлен` });
+  };
+
+  const addSupplierProduct = (productData: Partial<Product>) => {
+    const newProduct: Product = {
+      id: products.length + 1,
+      sku: productData.sku || '',
+      name: productData.name || '',
+      category: productData.category || '',
+      unit: productData.unit || 'шт',
+      price: productData.price || 0,
+      supplier_id: currentUser?.id || null,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+    setProducts([...products, newProduct]);
+    toast({ title: 'Товар добавлен', description: 'Товар отправлен на одобрение оператору' });
+  };
+
+  const approveProduct = (productId: number) => {
+    setProducts(products.map(p => 
+      p.id === productId ? { ...p, status: 'approved' } : p
+    ));
+    toast({ title: 'Товар одобрен', description: 'Товар добавлен в каталог' });
+  };
+
+  const rejectProduct = (productId: number) => {
+    setProducts(products.map(p => 
+      p.id === productId ? { ...p, status: 'rejected' } : p
+    ));
+    toast({ title: 'Товар отклонен', description: 'Товар отклонен' });
   };
 
   const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
@@ -449,12 +549,74 @@ const Index = () => {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-3xl font-bold">Товары</h2>
-                <p className="text-muted-foreground">Номенклатура склада</p>
+                <p className="text-muted-foreground">
+                  {currentUser?.role === 'supplier' ? 'Мои товары' : 
+                   currentUser?.role === 'operator' ? 'Управление товарами' : 
+                   'Каталог товаров'}
+                </p>
               </div>
-              <Button>
-                <Icon name="Plus" size={16} className="mr-2" />
-                Добавить товар
-              </Button>
+              {currentUser?.role === 'supplier' && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Icon name="Plus" size={16} className="mr-2" />
+                      Добавить товар
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Новый товар</DialogTitle>
+                      <DialogDescription>Добавьте товар для размещения на складе</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      addSupplierProduct({
+                        sku: formData.get('sku') as string,
+                        name: formData.get('name') as string,
+                        category: formData.get('category') as string,
+                        unit: formData.get('unit') as string,
+                        price: Number(formData.get('price'))
+                      });
+                      e.currentTarget.reset();
+                    }} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="sku">Артикул (SKU)</Label>
+                        <Input id="sku" name="sku" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Наименование</Label>
+                        <Input id="name" name="name" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="category">Категория</Label>
+                        <Input id="category" name="category" required />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="unit">Единица</Label>
+                          <Select name="unit" defaultValue="шт">
+                            <SelectTrigger id="unit">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="шт">шт</SelectItem>
+                              <SelectItem value="кг">кг</SelectItem>
+                              <SelectItem value="л">л</SelectItem>
+                              <SelectItem value="м">м</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="price">Цена</Label>
+                          <Input id="price" name="price" type="number" required />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full">Добавить товар</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
             
             <Card>
@@ -465,28 +627,58 @@ const Index = () => {
                       <TableHead>SKU</TableHead>
                       <TableHead>Наименование</TableHead>
                       <TableHead>Категория</TableHead>
-                      <TableHead>Единица</TableHead>
+                      <TableHead>Цена</TableHead>
+                      <TableHead>Статус</TableHead>
+                      {(currentUser?.role === 'client' || currentUser?.role === 'operator') && <TableHead>Действия</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">SKU001</TableCell>
-                      <TableCell>Ноутбук Dell XPS</TableCell>
-                      <TableCell>Электроника</TableCell>
-                      <TableCell>шт</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">SKU002</TableCell>
-                      <TableCell>Холодильник LG</TableCell>
-                      <TableCell>Бытовая техника</TableCell>
-                      <TableCell>шт</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">SKU003</TableCell>
-                      <TableCell>Кофе Lavazza</TableCell>
-                      <TableCell>Продукты питания</TableCell>
-                      <TableCell>кг</TableCell>
-                    </TableRow>
+                    {products
+                      .filter(p => {
+                        if (currentUser?.role === 'supplier') return p.supplier_id === currentUser.id;
+                        if (currentUser?.role === 'client') return p.status === 'approved';
+                        return true;
+                      })
+                      .map(product => (
+                        <TableRow key={product.id}>
+                          <TableCell className="font-medium">{product.sku}</TableCell>
+                          <TableCell>{product.name}</TableCell>
+                          <TableCell>{product.category}</TableCell>
+                          <TableCell>{product.price.toLocaleString('ru-RU')} ₽</TableCell>
+                          <TableCell>
+                            <Badge className={
+                              product.status === 'approved' ? 'bg-green-500' :
+                              product.status === 'pending' ? 'bg-yellow-500' :
+                              'bg-red-500'
+                            }>
+                              {product.status === 'approved' ? 'Одобрен' :
+                               product.status === 'pending' ? 'На модерации' : 'Отклонен'}
+                            </Badge>
+                          </TableCell>
+                          {currentUser?.role === 'client' && (
+                            <TableCell>
+                              <Button size="sm" onClick={() => addProductToCart(product)}>
+                                <Icon name="ShoppingCart" size={14} className="mr-2" />
+                                В корзину
+                              </Button>
+                            </TableCell>
+                          )}
+                          {currentUser?.role === 'operator' && product.status === 'pending' && (
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => approveProduct(product.id)}>
+                                  <Icon name="Check" size={14} className="mr-1" />
+                                  Одобрить
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => rejectProduct(product.id)}>
+                                  <Icon name="X" size={14} className="mr-1" />
+                                  Отклонить
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -765,24 +957,100 @@ const Index = () => {
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
+            {currentUser?.role === 'client' && cart.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Корзина</CardTitle>
+                  <CardDescription>{cart.length} товаров</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {cart.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center border-b pb-2">
+                        <div>
+                          <p className="font-medium">{item.product.name}</p>
+                          <p className="text-sm text-muted-foreground">{item.product.price.toLocaleString('ru-RU')} ₽ × {item.quantity}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <p className="font-bold">{(item.product.price * item.quantity).toLocaleString('ru-RU')} ₽</p>
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={() => setCart(cart.filter((_, i) => i !== index))}
+                          >
+                            <Icon name="Trash2" size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center pt-4 border-t-2">
+                      <p className="text-lg font-bold">Итого:</p>
+                      <p className="text-2xl font-bold">{cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0).toLocaleString('ru-RU')} ₽</p>
+                    </div>
+                    <Button className="w-full" size="lg" onClick={createOrder}>
+                      <Icon name="ShoppingCart" size={16} className="mr-2" />
+                      Оформить заказ
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-3xl font-bold">Заказы</h2>
-                <p className="text-muted-foreground">Управление заказами</p>
+                <p className="text-muted-foreground">
+                  {currentUser?.role === 'client' ? 'Мои заказы' : 'Все заказы'}
+                </p>
               </div>
-              {currentUser?.role === 'client' && (
-                <Button>
-                  <Icon name="Plus" size={16} className="mr-2" />
-                  Создать заказ
-                </Button>
-              )}
             </div>
             
             <Card>
               <CardContent className="pt-6">
-                <div className="text-center py-12 text-muted-foreground">
-                  Нет заказов
-                </div>
+                {orders.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    Нет заказов
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Статус</TableHead>
+                        <TableHead>Сумма</TableHead>
+                        <TableHead>Дата</TableHead>
+                        <TableHead>Товары</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orders
+                        .filter(o => currentUser?.role !== 'client' || o.client_id === currentUser?.id)
+                        .map(order => (
+                          <TableRow key={order.id}>
+                            <TableCell className="font-medium">#{order.id}</TableCell>
+                            <TableCell>
+                              <Badge className={
+                                order.status === 'new' ? 'bg-blue-500' :
+                                order.status === 'processing' ? 'bg-yellow-500' :
+                                order.status === 'completed' ? 'bg-green-500' : 'bg-gray-500'
+                              }>
+                                {order.status === 'new' ? 'Новый' :
+                                 order.status === 'processing' ? 'В обработке' :
+                                 order.status === 'completed' ? 'Завершен' : order.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-bold">{order.total_amount.toLocaleString('ru-RU')} ₽</TableCell>
+                            <TableCell>{new Date(order.created_at).toLocaleDateString('ru-RU')}</TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {order.items.map(item => `${item.product_name} (${item.quantity})`).join(', ')}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </div>
