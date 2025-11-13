@@ -46,23 +46,7 @@ const Index = () => {
   }, [isLoggedIn, currentUser]);
 
   const loadData = async () => {
-    try {
-      const [reqRes, prodRes, contrRes, orderRes, zoneRes] = await Promise.all([
-        fetch('/api/requests').catch(() => ({ ok: false })),
-        fetch('/api/products').catch(() => ({ ok: false })),
-        fetch('/api/contractors').catch(() => ({ ok: false })),
-        fetch('/api/orders').catch(() => ({ ok: false })),
-        fetch('/api/zones').catch(() => ({ ok: false }))
-      ]);
-
-      if (reqRes.ok) setRequests(await reqRes.json());
-      if (prodRes.ok) setProducts(await prodRes.json());
-      if (contrRes.ok) setContractors(await contrRes.json());
-      if (orderRes.ok) setOrders(await orderRes.json());
-      if (zoneRes.ok) setZones(await zoneRes.json());
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
+    
   };
 
   const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
